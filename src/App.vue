@@ -3,6 +3,7 @@
         .container
             main.main
                 h1.title {{ friendCount }} случайных друзей
+                button.auth-button(type="button" v-if="accessToken === null" @click="authRequest") Авторизоваться
                 friend-card(
                     v-if="friends.length"
                     v-for="friend in friends"
@@ -12,7 +13,7 @@
 </template>
 
 <script lang="ts">
-import { Component, Vue } from 'vue-property-decorator';
+import { Component, Vue, Watch } from 'vue-property-decorator';
 import FriendCard from '@/components/FriendCard.vue';
 import { Friend, VkFriendResponse } from '@/types';
 // @ts-ignore
@@ -32,7 +33,7 @@ export default class App extends Vue {
     private apiVersion = '5.103';
     private clientId = '6713277';
 
-    private accessToken!: string;
+    private accessToken: string | null = null;
     private requestCallbackFunctionName = 'VK_API_REQUEST_CALLBACK_FUNCTION';
 
     private authUrl = 'https://oauth.vk.com/authorize'
@@ -40,16 +41,6 @@ export default class App extends Vue {
                       + '&redirect_uri=' + process.env.VUE_APP_SITE_ADDRESS
                       + '&scope=friends'
                       + '&response_type=token'
-
-    get friendsRequestUrl (): string {
-        return 'https://api.vk.com/method/friends.get'
-               + '?v=' + this.apiVersion
-               + '&access_token=' + this.accessToken
-               + '&order=random'
-               + '&count=' + this.friendCount
-               + '&fields=photo_100,city'
-               + '&callback=' + this.requestCallbackFunctionName;
-    }
 
     calculateExpireDate (timeDelta: string | number) {
         return Date.now() + +timeDelta * 1000;
@@ -79,8 +70,35 @@ export default class App extends Vue {
         return accessToken;
     }
 
+    authRequest () {
+        location.assign(this.authUrl);
+    }
+
+    friendRequest () {
+        // @ts-ignore
+        window[this.requestCallbackFunctionName] = this.requestCallback;
+        postscribe('#app', `<script type="text/javascript" src="${this.friendsRequestUrl}"><\/script>`);
+    }
+
     requestCallback (data: VkFriendResponse) {
         this.friends = data.response.items;
+    }
+
+    get friendsRequestUrl (): string {
+        return 'https://api.vk.com/method/friends.get'
+            + '?v=' + this.apiVersion
+            + '&access_token=' + this.accessToken
+            + '&order=random'
+            + '&count=' + this.friendCount
+            + '&fields=photo_100,city'
+            + '&callback=' + this.requestCallbackFunctionName;
+    }
+
+    @Watch('accessToken')
+    onPropertyChanged (value: string | null) {
+        if (value) {
+            this.friendRequest();
+        }
     }
 
     created () {
@@ -90,17 +108,13 @@ export default class App extends Vue {
             accessToken = this.checkHash();
 
             if (accessToken === null) {
-                location.assign(this.authUrl);
+                return
             }
         } else {
             accessToken = this.$cookies.get('accessToken');
         }
 
         this.accessToken = accessToken;
-
-        // @ts-ignore
-        window[this.requestCallbackFunctionName] = this.requestCallback;
-        postscribe('#app', `<script type="text/javascript" src="${this.friendsRequestUrl}"><\/script>`);
     }
 }
 </script>
@@ -135,6 +149,25 @@ body {
         .title {
             text-align: center;
             font-size: 3em;
+        }
+
+        .auth-button {
+            display: block;
+            margin: auto;
+            padding: 16px 36px;
+            font-size: 1.4em;
+            outline: none;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(30, 144, 255, 0.6);
+            color: white;
+            background: dodgerblue;
+            transition: box-shadow 0.2s ease;
+            cursor: pointer;
+
+            &:hover {
+                box-shadow: 0 4px 8px 4px rgba(30, 144, 255, 0.4);
+            }
         }
     }
 }
