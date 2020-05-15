@@ -1,13 +1,14 @@
 <template lang="pug">
     #app
+        #script-container(ref="scriptContainer")
         .container
             main.main
                 h1.title {{ friendCount }} случайных друзей
+                .error(v-if="error") {{ error }}
                 button.auth-button(type="button" v-if="accessToken === null" @click="authRequest") Авторизоваться
                 friend-card(
-                    v-if="friends.length"
-                    v-for="friend in friends"
-                    :key="friend.id"
+                    v-for="[id, friend] in friendEntries"
+                    :key="id"
                     :friend="friend"
                 )
 </template>
@@ -16,8 +17,6 @@
 import { Component, Vue, Watch } from 'vue-property-decorator';
 import FriendCard from '@/components/FriendCard.vue';
 import { Friend, VkFriendResponse } from '@/types';
-// @ts-ignore
-import postscribe from 'postscribe';
 
 
 @Component({
@@ -26,13 +25,14 @@ import postscribe from 'postscribe';
   },
 })
 export default class App extends Vue {
-    private friends: Friend[] = [];
+    private friends: {[id: number]: Friend} = {};
 
     private friendCount = 5;
 
     private apiVersion = '5.103';
     private clientId = '6713277';
 
+    private error: string | null = null;
     private accessToken: string | null = null;
     private requestCallbackFunctionName = 'VK_API_REQUEST_CALLBACK_FUNCTION';
 
@@ -42,8 +42,8 @@ export default class App extends Vue {
                       + '&scope=friends'
                       + '&response_type=token'
 
-    calculateExpireDate (timeDelta: string | number) {
-        return Date.now() + +timeDelta * 1000;
+    calculateCookieExpireDate (timeDelta: number): Date {
+        return new Date(Date.now() + timeDelta * 1000);
     }
 
     checkHash (): string | null {
@@ -62,7 +62,7 @@ export default class App extends Vue {
         this.$cookies.set(
             'accessToken',
             accessToken,
-            this.calculateExpireDate(urlParams.get('expires_in')!)
+            this.calculateCookieExpireDate(+urlParams.get('expires_in')!)
         )
 
         history.pushState('', document.title, location.pathname + location.search);
@@ -75,13 +75,32 @@ export default class App extends Vue {
     }
 
     friendRequest () {
+        console.log('Commencing API request...');
         // @ts-ignore
         window[this.requestCallbackFunctionName] = this.requestCallback;
-        postscribe('#app', `<script type="text/javascript" src="${this.friendsRequestUrl}"><\/script>`);
+
+        const script = document.createElement('script');
+        script.src = this.friendsRequestUrl;
+
+        (this.$refs.scriptContainer as HTMLElement).appendChild(script);
     }
 
     requestCallback (data: VkFriendResponse) {
-        this.friends = data.response.items;
+        console.log('Got response:', data);
+
+        this.error = data.error?.error_msg || null;
+
+        if (data.response?.items[0] && data.response?.items[0].first_name !== 'DELETED') {
+            this.$set(this.friends, data.response?.items[0].id, data.response?.items[0]);
+        }
+
+        if (Object.keys(this.friends).length < this.friendCount) {
+            this.friendRequest();
+        }
+    }
+
+    get friendEntries (): [string, Friend][] {
+        return Object.entries(this.friends);
     }
 
     get friendsRequestUrl (): string {
@@ -89,32 +108,22 @@ export default class App extends Vue {
             + '?v=' + this.apiVersion
             + '&access_token=' + this.accessToken
             + '&order=random'
-            + '&count=' + this.friendCount
+            + '&count=1'
             + '&fields=photo_100,city'
             + '&callback=' + this.requestCallbackFunctionName;
     }
 
     @Watch('accessToken')
     onPropertyChanged (value: string | null) {
-        if (value) {
-            this.friendRequest();
-        }
+        value && this.friendRequest();
     }
 
     created () {
-        let accessToken;
-
         if (!this.$cookies.isKey('accessToken')) {
-            accessToken = this.checkHash();
-
-            if (accessToken === null) {
-                return
-            }
+            this.accessToken = this.checkHash();
         } else {
-            accessToken = this.$cookies.get('accessToken');
+            this.accessToken = this.$cookies.get('accessToken');
         }
-
-        this.accessToken = accessToken;
     }
 }
 </script>
@@ -149,6 +158,12 @@ body {
         .title {
             text-align: center;
             font-size: 3em;
+        }
+
+        .error {
+            margin: auto;
+            text-align: center;
+            color: #c00;
         }
 
         .auth-button {

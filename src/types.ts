@@ -10,8 +10,11 @@ export type Friend = {
 }
 
 export type VkFriendResponse = {
-    response: {
+    response?: {
         count: number;
         items: Friend[];
-    }
+    };
+    error?: {
+        error_msg: string;
+    };
 }
