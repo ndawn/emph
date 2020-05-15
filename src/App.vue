@@ -86,7 +86,12 @@ export default class App extends Vue {
     }
 
     requestCallback (data: VkFriendResponse) {
-        console.log('Got response:', data);
+        console.log('Got API response:', data);
+
+        if (data.error?.error_code === 5) {
+            this.$cookies.remove('accessToken');
+            return;
+        }
 
         this.error = data.error?.error_msg || null;
 

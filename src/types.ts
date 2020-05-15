@@ -15,6 +15,7 @@ export type VkFriendResponse = {
         items: Friend[];
     };
     error?: {
+        error_code: number;
         error_msg: string;
     };
 }
